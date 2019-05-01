@@ -16,17 +16,20 @@ extern crate byteorder;
 extern crate ff;
 extern crate rand;
 
+use std::cmp::Ordering;
+use std::error::Error;
+use std::fmt;
+
+use ff::{Field, PrimeField, PrimeFieldDecodingError, PrimeFieldRepr, ScalarEngine, SqrtField};
+
+pub use self::wnaf::Wnaf;
+
 #[cfg(test)]
 pub mod tests;
 
 pub mod bls12_381;
 
 mod wnaf;
-pub use self::wnaf::Wnaf;
-
-use ff::{Field, PrimeField, PrimeFieldDecodingError, PrimeFieldRepr, ScalarEngine, SqrtField};
-use std::error::Error;
-use std::fmt;
 
 /// An "engine" is a collection of types (fields, elliptic curve groups, etc.)
 /// with well-defined relationships. In particular, the G1/G2 curve groups are
@@ -228,6 +231,9 @@ pub trait CurveAffine:
     fn into_uncompressed(&self) -> Self::Uncompressed {
         <Self::Uncompressed as EncodedPoint>::from_affine(*self)
     }
+
+    /// Returns a deterministic, lexicographic ordering over elliptic curve points.
+    fn lexicographic_cmp(&self, other: &Self) -> Ordering;
 }
 
 /// An encoded elliptic curve point, which should essentially wrap a `[u8; N]`.

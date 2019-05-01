@@ -194,6 +194,30 @@ macro_rules! curve_impl {
                 (*self).into()
             }
 
+            fn lexicographic_cmp(&self, other: &Self) -> Ordering {
+                // We order points similar to the compressed encoding.
+                // The ordering is lexicographically and considers:
+                // 1. Infinity
+                // 2. "Parity" bit
+                // 3. x coordinate
+                match (self.is_zero(), other.is_zero()) {
+                    (true, true) => Ordering::Equal,
+                    (false, true) => Ordering::Less,
+                    (true, false) => Ordering::Greater,
+                    _ => {
+                        let mut negy_self = self.y;
+                        negy_self.negate();
+
+                        let mut negy_other = other.y;
+                        negy_other.negate();
+
+                        match (self.y > negy_self).cmp(&(other.y > negy_other)) {
+                            Ordering::Equal => self.x.cmp(&other.x),
+                            ordering => ordering,
+                        }
+                    },
+                }
+            }
         }
 
         impl Rand for $projective {
@@ -625,6 +649,7 @@ pub mod g1 {
     use super::g2::G2Affine;
     use ff::{BitIterator, Field, PrimeField, PrimeFieldRepr, SqrtField};
     use rand::{Rand, Rng};
+    use std::cmp::Ordering;
     use std::fmt;
     use {CurveAffine, CurveProjective, EncodedPoint, Engine, GroupDecodingError};
 
@@ -1260,6 +1285,89 @@ pub mod g1 {
     }
 
     #[test]
+    fn test_g1_ordering() {
+        fn assert_equality(a: G1Affine, b: G1Affine) {
+            assert!(a.lexicographic_cmp(&b) == Ordering::Equal);
+        }
+
+        fn assert_lt(a: G1Affine, b: G1Affine) {
+            assert!(a.lexicographic_cmp(&b) == Ordering::Less);
+            assert!(b.lexicographic_cmp(&a) == Ordering::Greater);
+        }
+
+        assert_equality(
+            G1Affine {
+                x: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                y: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                infinity: false,
+            },
+            G1Affine {
+                x: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                y: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                infinity: false,
+            },
+        );
+        assert_equality(
+            G1Affine::zero(),
+            G1Affine::zero(),
+        );
+        assert_lt(
+            G1Affine {
+                x: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                y: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                infinity: false,
+            },
+            G1Affine::zero(),
+        );
+        assert_lt(
+            G1Affine {
+                x: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9998])).unwrap(),
+                y: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                infinity: false,
+            },
+            G1Affine {
+                x: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                y: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                infinity: false,
+            },
+        );
+
+        let left = G1Affine {
+            x: Fq::from_repr(FqRepr([
+                0x6dd3098f22235df,
+                0xe865d221c8090260,
+                0xeb96bb99fa50779f,
+                0xc4f9a52a428e23bb,
+                0xd178b28dd4f407ef,
+                0x17fb8905e9183c69
+            ])).unwrap(),
+            y: Fq::from_repr(FqRepr([
+                0xd0de9d65292b7710,
+                0xf6a05f2bcf1d9ca7,
+                0x1040e27012f20b64,
+                0xeec8d1a5b7466c58,
+                0x4bc362649dce6376,
+                0x430cbdc5455b00a
+            ])).unwrap(),
+            infinity: false,
+        };
+        let mut right = left;
+        right.negate();
+        assert_lt(
+            left,
+            right,
+        );
+        assert_lt(
+            G1Affine {
+                x: Fq::from_repr(FqRepr([0, 0, 0, 0, 0, 1])).unwrap(),
+                y: Fq::from_repr(FqRepr([0, 0, 0, 0, 0, 1])).unwrap(),
+                infinity: false,
+            },
+            right,
+        );
+    }
+
+    #[test]
     fn g1_curve_tests() {
         ::tests::curve::curve_tests::<G1>();
     }
@@ -1270,6 +1378,7 @@ pub mod g2 {
     use super::g1::G1Affine;
     use ff::{BitIterator, Field, PrimeField, PrimeFieldRepr, SqrtField};
     use rand::{Rand, Rng};
+    use std::cmp::Ordering;
     use std::fmt;
     use {CurveAffine, CurveProjective, EncodedPoint, Engine, GroupDecodingError};
 
@@ -2009,6 +2118,145 @@ pub mod g2 {
                 },
                 infinity: false,
             }
+        );
+    }
+
+    #[test]
+    fn test_g2_ordering() {
+        fn assert_equality(a: G2Affine, b: G2Affine) {
+            assert!(a.lexicographic_cmp(&b) == Ordering::Equal);
+        }
+
+        fn assert_lt(a: G2Affine, b: G2Affine) {
+            assert!(a.lexicographic_cmp(&b) == Ordering::Less);
+            assert!(b.lexicographic_cmp(&a) == Ordering::Greater);
+        }
+
+        assert_equality(
+            G2Affine {
+                x: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                y: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                infinity: false,
+            },
+            G2Affine {
+                x: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                y: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                infinity: false,
+            },
+        );
+        assert_equality(
+            G2Affine::zero(),
+            G2Affine::zero(),
+        );
+        assert_lt(
+            G2Affine {
+                x: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                y: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                infinity: false,
+            },
+            G2Affine::zero(),
+        );
+        assert_lt(
+            G2Affine {
+                x: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9998])).unwrap(),
+                },
+                y: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                infinity: false,
+            },
+            G2Affine {
+                x: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                y: Fq2 {
+                    c0: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([9999, 9999, 9999, 9999, 9999, 9999])).unwrap(),
+                },
+                infinity: false,
+            },
+        );
+
+        let left = G2Affine {
+            x: Fq2 {
+                c0: Fq::from_repr(FqRepr([
+                    0x91ccb1292727c404,
+                    0x91a6cb182438fad7,
+                    0x116aee59434de902,
+                    0xbcedcfce1e52d986,
+                    0x9755d4a3926e9862,
+                    0x18bab73760fd8024
+                ])).unwrap(),
+                c1: Fq::from_repr(FqRepr([
+                    0x4e7c5e0a2ae5b99e,
+                    0x96e582a27f028961,
+                    0xc74d1cf4ef2d5926,
+                    0xeb0cf5e610ef4fe7,
+                    0x7b4c2bae8db6e70b,
+                    0xf136e43909fca0
+                ])).unwrap(),
+            },
+            y: Fq2 {
+                c0: Fq::from_repr(FqRepr([
+                    0x954d4466ab13e58,
+                    0x3ee42eec614cf890,
+                    0x853bb1d28877577e,
+                    0xa5a2a51f7fde787b,
+                    0x8b92866bc6384188,
+                    0x81a53fe531d64ef
+                ])).unwrap(),
+                c1: Fq::from_repr(FqRepr([
+                    0x4c5d607666239b34,
+                    0xeddb5f48304d14b3,
+                    0x337167ee6e8e3cb6,
+                    0xb271f52f12ead742,
+                    0x244e6c2015c83348,
+                    0x19e2deae6eb9b441
+                ])).unwrap(),
+            },
+            infinity: false,
+        };
+        let mut right = left;
+        right.negate();
+        assert_lt(
+            right,
+            left,
+        );
+        assert_lt(
+            G2Affine {
+                x: Fq2 {
+                    c0: Fq::from_repr(FqRepr([0, 0, 0, 0, 0, 1])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([0, 0, 0, 0, 0, 1])).unwrap(),
+                },
+                y: Fq2 {
+                    c0: Fq::from_repr(FqRepr([0, 0, 0, 0, 0, 1])).unwrap(),
+                    c1: Fq::from_repr(FqRepr([0, 0, 0, 0, 0, 1])).unwrap(),
+                },
+                infinity: false,
+            },
+            right,
         );
     }
 
